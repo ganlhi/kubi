@@ -1,0 +1,89 @@
+import type { Category, CategoryKind, DataFile, MonthKey, Operation } from './types'
+
+const updateOp = (data: DataFile, id: string, patch: (op: Operation) => Operation): DataFile => ({
+  ...data,
+  operations: data.operations.map((op) => (op.id === id ? patch(op) : op)),
+})
+
+/**
+ * Set an operation's description. An operation without a category takes the
+ * one of the latest operation that already carried this description.
+ */
+export function setDescription(data: DataFile, id: string, description: string): DataFile {
+  const text = description.trim()
+  const target = data.operations.find((o) => o.id === id)
+  if (!target) return data
+  let categoryId = target.categoryId
+  if (!categoryId && text) {
+    const previous = data.operations
+      .filter((o) => o.id !== id && o.description === text && o.categoryId)
+      .sort((a, b) => b.seq - a.seq)[0]
+    categoryId = previous?.categoryId
+  }
+  return updateOp(data, id, (op) => ({ ...op, description: text || undefined, categoryId }))
+}
+
+export const setCategory = (data: DataFile, id: string, categoryId: string | undefined): DataFile =>
+  updateOp(data, id, (op) => ({ ...op, categoryId }))
+
+export const setMonthOverride = (data: DataFile, id: string, month: MonthKey | undefined): DataFile =>
+  updateOp(data, id, (op) => ({ ...op, monthOverride: month }))
+
+export const setMonthStart = (data: DataFile, id: string, month: MonthKey | undefined): DataFile =>
+  updateOp(data, id, (op) => ({ ...op, monthStart: month }))
+
+/**
+ * Merge two operations found to be the same: keep one, drop the other for
+ * good, and carry over what the user had set on the dropped one where the
+ * kept one has nothing.
+ */
+export function mergeDuplicates(data: DataFile, keepId: string, dropId: string): DataFile {
+  const drop = data.operations.find((o) => o.id === dropId)
+  if (!drop || keepId === dropId) return data
+  const merged = updateOp(data, keepId, (keep) => ({
+    ...keep,
+    description: keep.description ?? drop.description,
+    categoryId: keep.categoryId ?? drop.categoryId,
+    monthStart: keep.monthStart ?? drop.monthStart,
+  }))
+  return {
+    ...merged,
+    operations: merged.operations.filter((o) => o.id !== dropId),
+    ignoredIds: [...merged.ignoredIds, dropId],
+  }
+}
+
+export function addCategory(data: DataFile, category: Omit<Category, 'budgets'> & { budgets?: Category['budgets'] }): DataFile {
+  return { ...data, categories: [...data.categories, { budgets: [], ...category }] }
+}
+
+export function updateCategory(data: DataFile, id: string, patch: Partial<Omit<Category, 'id'>>): DataFile {
+  return {
+    ...data,
+    categories: data.categories.map((c) => {
+      if (c.id !== id) return c
+      const next = { ...c, ...patch }
+      // Only expenses have a cap.
+      const kind: CategoryKind = next.kind
+      return kind === 'expense' ? next : { ...next, budgets: [] }
+    }),
+  }
+}
+
+export const categoryUsage = (data: DataFile, id: string): number =>
+  data.operations.filter((o) => o.categoryId === id).length
+
+/** Delete a category, moving its operations to `reassignTo` (or leaving them uncategorised). */
+export function deleteCategory(data: DataFile, id: string, reassignTo: string | undefined): DataFile {
+  return {
+    ...data,
+    categories: data.categories.filter((c) => c.id !== id),
+    operations: data.operations.map((o) => (o.categoryId === id ? { ...o, categoryId: reassignTo } : o)),
+  }
+}
+
+export function authorize(data: DataFile, email: string): DataFile {
+  const normalized = email.trim().toLowerCase()
+  if (data.authorizedEmails.some((e) => e.toLowerCase() === normalized)) return data
+  return { ...data, authorizedEmails: [...data.authorizedEmails, normalized] }
+}

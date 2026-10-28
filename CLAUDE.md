@@ -100,6 +100,7 @@ Quand un nouveau mois est démarré, chaque instance de l'application doit affic
 - Ordre total des opérations : date d'opération, puis ordre d'import.
 - En posant le drapeau « Changement de mois », l'utilisateur choisit le mois qui démarre ; défaut = mois de l'opération + 1 si elle tombe après le 15, sinon le mois de l'opération.
 - Le mois de chaque opération est aussi éditable à la main ; ce choix l'emporte sur la règle du drapeau.
+- Le drapeau ne reclasse que les opérations qui le suivent : une opération placée avant lui garde son mois calendaire, même si elle tombe dans le mois qu'il démarre (ex. une opération du 1er novembre avant un drapeau posé le 2 novembre reste en novembre). La correction se fait à la main.
 
 ## Catégories et budgets
 - Calculs en net : un remboursement réduit la consommation du budget de sa catégorie.
