@@ -5,6 +5,7 @@ import { addCategory, categoryUsage, deleteCategory, updateCategory } from '../d
 import { monthLabel } from '../domain/months'
 import type { Category, CategoryKind, DataFile, MonthKey } from '../domain/types'
 import { useKubi } from '../state/store'
+import { MonthInput } from './MonthInput'
 import { Modal } from './ui'
 import { btn, formatCents, input, parseEuros } from './format'
 
@@ -127,10 +128,10 @@ function CategoryDialog({ category, existing, month, onClose, onSave }: {
             Budget mensuel (€, vide = aucun)
             <input className={`${input} mt-1`} value={cap} onChange={(e) => setCap(e.target.value)} inputMode="decimal" />
           </label>
-          <label className="text-sm flex-1">
+          <div className="text-sm flex-1">
             À partir de
-            <input type="month" className={`${input} mt-1`} value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
+            <MonthInput value={from} onChange={setFrom} />
+          </div>
         </div>
       )}
       {capInvalid && <p className="text-xs text-red-600">Montant invalide.</p>}

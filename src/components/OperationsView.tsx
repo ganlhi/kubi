@@ -6,7 +6,9 @@ import type { DataFile, MonthKey, Operation } from '../domain/types'
 import { useKubi } from '../state/store'
 import { rankDescriptions } from '../domain/suggest'
 import { BudgetSummary } from './BudgetSummary'
+import { CategorySelect } from './CategorySelect'
 import { DescriptionInput } from './DescriptionInput'
+import { MonthInput } from './MonthInput'
 import { Modal } from './ui'
 import { btn, formatCents, formatDate, input } from './format'
 
@@ -164,19 +166,12 @@ function OperationRow({ op, data, descriptions, month, selected, readOnly, onTog
           disabled={readOnly}
           onCommit={(value) => mutate((d) => setDescription(d, op.id, value))}
         />
-        <select
-          className={`${input} sm:!w-44 !w-auto !py-1 ${op.categoryId ? '' : 'italic text-stone-400'}`}
-          value={op.categoryId ?? ''}
+        <CategorySelect
+          categories={data.categories}
+          value={op.categoryId}
           disabled={readOnly}
-          onChange={(e) => mutate((d) => setCategory(d, op.id, e.target.value || undefined))}
-        >
-          <option value="">— Catégorie —</option>
-          {data.categories.map((c) => (
-            <option key={c.id} value={c.id} className="not-italic text-stone-900">
-              {c.name}
-            </option>
-          ))}
-        </select>
+          onChange={(categoryId) => mutate((d) => setCategory(d, op.id, categoryId))}
+        />
         <select
           className={`${input} sm:!w-40 !w-auto !py-1 ${op.monthOverride ? '' : 'italic'}`}
           value={op.monthOverride ?? ''}
@@ -207,10 +202,10 @@ function FlagDialog({ op, onClose, onConfirm }: { op: Operation; onClose: () => 
         À partir de « {op.label} » ({formatDate(op.date)}), les opérations datées d’un mois antérieur seront rattachées au mois
         choisi.
       </p>
-      <label className="text-sm">
+      <div className="text-sm">
         Mois qui démarre
-        <input type="month" className={`${input} mt-1`} value={month} onChange={(e) => setMonth(e.target.value)} />
-      </label>
+        <MonthInput value={month} onChange={setMonth} />
+      </div>
       <div className="flex justify-end gap-2">
         <button className={btn.plain} onClick={onClose}>
           Annuler

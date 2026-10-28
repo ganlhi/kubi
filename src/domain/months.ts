@@ -8,7 +8,7 @@ export function addMonths(month: MonthKey, n: number): MonthKey {
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
 }
 
-const MONTH_NAMES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+export const MONTH_NAMES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 
 export function monthLabel(month: MonthKey): string {
   const [y, m] = month.split('-').map(Number)

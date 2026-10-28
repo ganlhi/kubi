@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { suggest } from '../domain/suggest'
 import { input } from './format'
+import { OptionList } from './OptionList'
 
 /**
  * A text field suggesting earlier descriptions, but only once something is
@@ -62,24 +63,7 @@ export function DescriptionInput({ value, options, disabled, onCommit }: {
         }}
       />
       {suggestions.length > 0 && (
-        <ul role="listbox" className="absolute z-20 left-0 right-0 mt-1 bg-white border border-stone-200 rounded-lg shadow-lg py-1 text-sm">
-          {suggestions.map((s, i) => (
-            <li
-              key={s}
-              role="option"
-              aria-selected={i === active}
-              className={`px-3 py-1 cursor-pointer ${i === active ? 'bg-emerald-50' : ''}`}
-              // Before the input's blur, which would otherwise commit the half-typed text first.
-              onMouseDown={(e) => {
-                e.preventDefault()
-                commit(s)
-              }}
-              onMouseEnter={() => setActive(i)}
-            >
-              {s}
-            </li>
-          ))}
-        </ul>
+        <OptionList items={suggestions} active={active} keyOf={(d) => d} render={(d) => d} onPick={commit} onHover={setActive} />
       )}
     </div>
   )

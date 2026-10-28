@@ -8,6 +8,9 @@ const normalize = (text: string): string =>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
 
+/** Whether `text` contains `query`, ignoring case and accents. */
+export const matches = (text: string, query: string): boolean => normalize(text).includes(normalize(query.trim()))
+
 /** Every description in use, most frequent first, then alphabetically. */
 export function rankDescriptions(operations: Operation[]): string[] {
   const counts = new Map<string, number>()
