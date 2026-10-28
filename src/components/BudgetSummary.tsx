@@ -33,7 +33,7 @@ function Gauge({ label, color, spent, budget, ratio, status }: {
 
 export function BudgetSummary({ summary }: { summary: MonthSummary }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col gap-4">
+    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 lg:max-h-[calc(100svh-var(--header-h,0px)-2rem)] lg:overflow-y-auto">
       <h2 className="font-semibold">Synthèse</h2>
       <Gauge
         label="Budget total"

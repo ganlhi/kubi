@@ -6,6 +6,7 @@ import { budgetFor, summarizeMonth, withBudgetFrom } from './budgets'
 import { deleteCategory, mergeDuplicates, setDescription } from './edits'
 import { suggestColor } from './colors'
 import { decodeInvite, encodeInvite } from './invite'
+import { rankDescriptions, suggest } from './suggest'
 import { emptyDataFile, type Category, type DataFile, type Operation } from './types'
 
 const HEADER =
@@ -192,6 +193,21 @@ describe('misc', () => {
   it('suggests a colour far from existing ones', () => {
     expect(suggestColor([])).toMatch(/^#[0-9a-f]{6}$/)
     expect(suggestColor(['#ff0000'])).not.toBe('#ff0000')
+  })
+
+  it('ranks descriptions by use, then alphabetically', () => {
+    const ops = ['Secours', 'Cours', 'Courses', 'Cours', 'Écran', 'Secours', 'Cours'].map((d, i) =>
+      op(String(i), '2026-10-01', -1, { description: d }),
+    )
+    expect(rankDescriptions(ops)).toEqual(['Cours', 'Secours', 'Courses', 'Écran'])
+  })
+
+  it('suggests matching descriptions once something is typed, keeping their order', () => {
+    const options = ['Secours', 'Courses', 'Écran', 'Cours']
+    expect(suggest(options, '')).toEqual([])
+    expect(suggest(options, 'cour')).toEqual(['Secours', 'Courses', 'Cours'])
+    expect(suggest(options, 'ecr')).toEqual(['Écran'])
+    expect(suggest(options, 'Cours')).toEqual(['Secours', 'Courses'])
   })
 
   it('round-trips an invitation', () => {

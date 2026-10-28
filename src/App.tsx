@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { summarizeMonth } from './domain/budgets'
 import { assignMonths, monthLabel, monthsWithOperations } from './domain/months'
 import type { MonthKey } from './domain/types'
@@ -61,6 +61,18 @@ function Main() {
   const [chosenMonth, setChosenMonth] = useState<MonthKey | null>(null)
   const [inviting, setInviting] = useState(false)
   const [reviewSeen, setReviewSeen] = useState(readSeen)
+  const header = useRef<HTMLElement>(null)
+
+  // What sticks under the header needs its height, which changes as its buttons wrap.
+  useEffect(() => {
+    const el = header.current
+    if (!el) return
+    const observer = new ResizeObserver(() =>
+      document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`),
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     void connect()
@@ -99,7 +111,7 @@ function Main() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="bg-white border-b border-stone-200 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <header ref={header} className="sticky top-0 z-40 bg-white border-b border-stone-200 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-lg font-semibold">Kubi</h1>
         <nav className="flex gap-1">
           {(
@@ -133,16 +145,21 @@ function Main() {
                 ? 'Enregistrement…'
                 : lastImport
                   ? `${lastImport.added} opération(s) importée(s) à ${new Date(lastImport.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                  : folder?.name}
+                  : null}
         </span>
-        <button className={btn.plain} disabled={!!busy || readOnly} onClick={() => void sync()} title="Rechercher de nouveaux exports">
+        <button
+          className={`${btn.plain} !text-xl !leading-none`}
+          disabled={!!busy || readOnly}
+          onClick={() => void sync()}
+          title="Rechercher de nouveaux exports"
+        >
           ⟳
         </button>
         <button className={btn.plain} disabled={readOnly} onClick={() => setInviting(true)}>
           Inviter
         </button>
         <button className={btn.plain} onClick={() => setFolder(null)} title="Changer de dossier Drive">
-          Dossier
+          📁 {folder?.name}
         </button>
       </header>
 
