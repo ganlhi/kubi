@@ -3,7 +3,7 @@ import { CsvFormatError, exportTimestamp, parseAmountCents, parseExport } from '
 import { importRows, operationIds } from './importOps'
 import { addMonths, assignMonths, defaultFlagMonth } from './months'
 import { budgetFor, summarizeMonth, withBudgetFrom } from './budgets'
-import { deleteCategory, mergeDuplicates, setDescription } from './edits'
+import { addTemporary, deleteCategory, deleteTemporary, mergeDuplicates, setDescription } from './edits'
 import { suggestColor } from './colors'
 import { decodeInvite, encodeInvite } from './invite'
 import { rankDescriptions, suggest } from './suggest'
@@ -181,6 +181,23 @@ describe('edits', () => {
     expect(merged.operations.map((o) => o.id)).toEqual(['newer', 'blank', 'set'])
     expect(merged.operations[1]).toMatchObject({ description: 'Courses', categoryId: 'food' })
     expect(merged.ignoredIds).toEqual(['old'])
+  })
+
+  it('adds a temporary operation, merges it into the real one, and forgets it', () => {
+    const withTemp = addTemporary(base, 'temp', { date: '2026-10-03', label: 'Dentiste', amountCents: -5000 })
+    expect(withTemp.operations.at(-1)).toMatchObject({ id: 'temp', valueDate: '2026-10-03', seq: 0, temporary: true })
+    expect(withTemp.nextSeq).toBe(1)
+    const described = setDescription(withTemp, 'temp', 'Santé')
+    const merged = mergeDuplicates(described, 'blank', 'temp')
+    expect(merged.operations.find((o) => o.id === 'blank')?.description).toBe('Santé')
+    expect(merged.operations.some((o) => o.id === 'temp')).toBe(false)
+    expect(merged.ignoredIds).toEqual([])
+  })
+
+  it('deletes only temporary operations', () => {
+    const withTemp = addTemporary(base, 'temp', { date: '2026-10-03', label: 'X', amountCents: -1 })
+    expect(deleteTemporary(withTemp, 'temp').operations).toHaveLength(4)
+    expect(deleteTemporary(withTemp, 'old').operations).toHaveLength(5)
   })
 
   it('reassigns operations of a deleted category', () => {

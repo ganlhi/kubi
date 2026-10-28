@@ -32,6 +32,22 @@ export const setMonthOverride = (data: DataFile, id: string, month: MonthKey | u
 export const setMonthStart = (data: DataFile, id: string, month: MonthKey | undefined): DataFile =>
   updateOp(data, id, (op) => ({ ...op, monthStart: month }))
 
+/** Add an operation by hand, ahead of the bank export that will bring the real one. */
+export function addTemporary(
+  data: DataFile,
+  id: string,
+  { date, label, amountCents }: { date: string; label: string; amountCents: number },
+): DataFile {
+  const op: Operation = { id, date, valueDate: date, label, amountCents, seq: data.nextSeq, temporary: true }
+  return { ...data, operations: [...data.operations, op], nextSeq: data.nextSeq + 1 }
+}
+
+/** Remove a temporary operation. Imported ones are only ever removed as duplicates. */
+export const deleteTemporary = (data: DataFile, id: string): DataFile => ({
+  ...data,
+  operations: data.operations.filter((o) => !(o.id === id && o.temporary)),
+})
+
 /**
  * Merge two operations found to be the same: keep one, drop the other for
  * good, and carry over what the user had set on the dropped one where the
@@ -49,7 +65,8 @@ export function mergeDuplicates(data: DataFile, keepId: string, dropId: string):
   return {
     ...merged,
     operations: merged.operations.filter((o) => o.id !== dropId),
-    ignoredIds: [...merged.ignoredIds, dropId],
+    // A temporary operation can never come back from an import, so there is nothing to ignore.
+    ignoredIds: drop.temporary ? merged.ignoredIds : [...merged.ignoredIds, dropId],
   }
 }
 

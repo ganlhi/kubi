@@ -18,6 +18,8 @@ export interface Operation {
   monthOverride?: MonthKey
   /** Set when this operation carries the "Changement de mois" flag: the month it starts. */
   monthStart?: MonthKey
+  /** Entered by hand ahead of the bank export, to be merged into the real one once it arrives. */
+  temporary?: true
 }
 
 export type CategoryKind = 'expense' | 'income' | 'refloat'

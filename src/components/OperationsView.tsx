@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 import { summarizeMonth } from '../domain/budgets'
-import { mergeDuplicates, setCategory, setDescription, setMonthOverride, setMonthStart } from '../domain/edits'
+import {
+  addTemporary,
+  deleteTemporary,
+  mergeDuplicates,
+  setCategory,
+  setDescription,
+  setMonthOverride,
+  setMonthStart,
+} from '../domain/edits'
 import { addMonths, calendarMonth, compareOperations, defaultFlagMonth, monthLabel } from '../domain/months'
 import type { DataFile, MonthKey, Operation } from '../domain/types'
 import { useKubi } from '../state/store'
@@ -10,7 +18,7 @@ import { CategorySelect } from './CategorySelect'
 import { DescriptionInput } from './DescriptionInput'
 import { MonthInput } from './MonthInput'
 import { Modal } from './ui'
-import { btn, formatCents, formatDate, input } from './format'
+import { btn, formatCents, formatDate, input, parseEuros, parseFrenchDate } from './format'
 
 interface Props {
   data: DataFile
@@ -24,6 +32,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const [selected, setSelected] = useState<string[]>([])
   const [flagging, setFlagging] = useState<Operation | null>(null)
   const [merging, setMerging] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const operations = useMemo(
     () => data.operations.filter((o) => months.get(o.id) === month).sort(compareOperations).reverse(),
@@ -38,6 +47,18 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const picked = selected.map((id) => data.operations.find((o) => o.id === id)).filter((o): o is Operation => !!o)
   const single = picked.length === 1 ? picked[0] : null
 
+  const markDuplicates = () => {
+    const [a, b] = picked
+    // A temporary operation always gives way to the real one: nothing to ask.
+    if (a.temporary !== b.temporary) {
+      const [keep, drop] = a.temporary ? [b, a] : [a, b]
+      mutate((d) => mergeDuplicates(d, keep.id, drop.id))
+      setSelected([])
+    } else {
+      setMerging(true)
+    }
+  }
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 items-start">
       <aside className="w-full lg:w-80 lg:order-2 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] shrink-0">
@@ -45,6 +66,11 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
       </aside>
 
       <section className="flex-1 min-w-0 flex flex-col gap-2 w-full">
+        <div className="flex justify-end">
+          <button className={btn.secondary} disabled={readOnly} onClick={() => setAdding(true)}>
+            + Opération temporaire
+          </button>
+        </div>
         {picked.length > 0 && (
           <div className="sticky top-[var(--header-h,0px)] z-30 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>
@@ -71,8 +97,20 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
                     📅 Démarrer un nouveau mois ici
                   </button>
                 ))}
+              {single?.temporary && (
+                <button
+                  className={btn.danger}
+                  disabled={readOnly}
+                  onClick={() => {
+                    mutate((d) => deleteTemporary(d, single.id))
+                    setSelected([])
+                  }}
+                >
+                  Supprimer
+                </button>
+              )}
               {picked.length === 2 && (
-                <button className={btn.primary} disabled={readOnly} onClick={() => setMerging(true)}>
+                <button className={btn.primary} disabled={readOnly} onClick={markDuplicates}>
                   Marquer comme doublons
                 </button>
               )}
@@ -102,6 +140,15 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
             mutate((d) => setMonthStart(d, flagging.id, m))
             setFlagging(null)
             setSelected([])
+          }}
+        />
+      )}
+      {adding && (
+        <TemporaryDialog
+          onClose={() => setAdding(false)}
+          onAdd={(op) => {
+            mutate((d) => addTemporary(d, `temp:${crypto.randomUUID()}`, op))
+            setAdding(false)
           }}
         />
       )}
@@ -138,7 +185,11 @@ function OperationRow({ op, data, descriptions, month, selected, readOnly, onTog
   return (
     <div
       className={`bg-white rounded-lg shadow-sm p-3 flex flex-wrap xl:flex-nowrap items-center gap-x-3 gap-y-2 border-l-4 ${selected ? 'ring-2 ring-emerald-500' : ''}`}
-      style={{ borderLeftColor: category?.color ?? '#d6d3d1' }}
+      style={{
+        borderLeftColor: category?.color ?? '#d6d3d1',
+        backgroundImage: op.temporary ? 'repeating-linear-gradient(135deg, #f5f5f4 0 6px, #ffffff 6px 12px)' : undefined,
+      }}
+      title={op.temporary ? 'Opération temporaire : à marquer comme doublon de la vraie quand elle arrivera' : undefined}
     >
       <input type="checkbox" checked={selected} onChange={onToggle} title="Sélectionner" />
       <span className="text-sm text-stone-500 w-20 shrink-0">{formatDate(op.date)}</span>
@@ -150,6 +201,9 @@ function OperationRow({ op, data, descriptions, month, selected, readOnly, onTog
           >
             📅 {monthLabel(op.monthStart)}
           </span>
+        )}
+        {op.temporary && (
+          <span className="text-xs font-medium text-stone-600 bg-stone-200 rounded px-1.5 py-0.5 mr-2">Temporaire</span>
         )}
         {op.label}
       </span>
@@ -212,6 +266,62 @@ function FlagDialog({ op, onClose, onConfirm }: { op: Operation; onClose: () => 
         </button>
         <button className={btn.primary} disabled={!month} onClick={() => onConfirm(month)}>
           Démarrer {month && monthLabel(month)}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function TemporaryDialog({ onClose, onAdd }: {
+  onClose: () => void
+  onAdd: (op: { date: string; label: string; amountCents: number }) => void
+}) {
+  // A text field: the native date picker follows the browser's language.
+  const [date, setDate] = useState(() => formatDate(new Date().toLocaleDateString('sv-SE')))
+  const [label, setLabel] = useState('')
+  const [amount, setAmount] = useState('')
+  const [credit, setCredit] = useState(false)
+  const cents = parseEuros(amount)
+  const isoDate = parseFrenchDate(date)
+  const valid = isoDate !== null && label.trim() !== '' && cents !== null && cents > 0
+
+  return (
+    <Modal title="Opération temporaire" onClose={onClose}>
+      <p className="text-sm text-stone-600">
+        Elle compte dans les budgets tout de suite. Quand la vraie opération sera importée, marquez les deux comme doublons : la
+        temporaire disparaîtra.
+      </p>
+      <label className="text-sm">
+        Date
+        <input className={`${input} mt-1`} value={date} onChange={(e) => setDate(e.target.value)} placeholder="JJ/MM/AAAA" inputMode="numeric" />
+      </label>
+      <label className="text-sm">
+        Libellé
+        <input className={`${input} mt-1`} value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
+      </label>
+      <div className="flex gap-2 items-end">
+        <label className="text-sm flex-1">
+          Montant (€)
+          <input className={`${input} mt-1`} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+        </label>
+        <div className="flex rounded-lg border border-stone-300 overflow-hidden text-sm">
+          {[false, true].map((c) => (
+            <button key={String(c)} className={`px-3 py-2 ${credit === c ? 'bg-emerald-600 text-white' : 'bg-white'}`} onClick={() => setCredit(c)}>
+              {c ? 'Recette' : 'Dépense'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button className={btn.plain} onClick={onClose}>
+          Annuler
+        </button>
+        <button
+          className={btn.primary}
+          disabled={!valid}
+          onClick={() => onAdd({ date: isoDate!, label: label.trim(), amountCents: credit ? cents! : -cents! })}
+        >
+          Ajouter
         </button>
       </div>
     </Modal>

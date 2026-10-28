@@ -7,6 +7,16 @@ export const formatDate = (iso: string): string => `${iso.slice(8, 10)}/${iso.sl
 
 export const formatRatio = (ratio: number): string => (Number.isFinite(ratio) ? `${Math.round(ratio * 100)} %` : '∞')
 
+/** `28/10/2026` → `2026-10-28`, or null when it is not a real date. */
+export function parseFrenchDate(text: string): string | null {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text.trim())
+  if (!m) return null
+  const [d, mo, y] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const date = new Date(Date.UTC(y, mo - 1, d))
+  if (date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return null
+  return date.toISOString().slice(0, 10)
+}
+
 /** `12,50` → 1250, or null when it is not an amount. */
 export function parseEuros(text: string): number | null {
   const cleaned = text.replace(/[\s€]/g, '').replace(',', '.')
