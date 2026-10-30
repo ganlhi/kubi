@@ -52,6 +52,25 @@ export interface DataFile {
   /** Operations merged away as duplicates: never re-imported. */
   ignoredIds: string[]
   nextSeq: number
+  /** Transfer planning, unrelated to operations; absent from files written before it existed. */
+  accountPlans?: AccountPlan[]
+}
+
+/** A recurring amount, always positive; `direction` says which way it moves. */
+export interface FixedItem {
+  id: string
+  name: string
+  amountCents: number
+  direction: 'debit' | 'credit'
+}
+
+/** One account to split money from: its fixed expenses, current balance and the reserve to keep. */
+export interface AccountPlan {
+  id: string
+  name: string
+  items: FixedItem[]
+  balanceCents?: number
+  reserveCents?: number
 }
 
 export const emptyDataFile = (email: string): DataFile => ({

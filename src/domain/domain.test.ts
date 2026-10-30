@@ -7,7 +7,8 @@ import { addTemporary, deleteCategory, deleteTemporary, mergeDuplicates, setDesc
 import { suggestColor } from './colors'
 import { decodeInvite, encodeInvite } from './invite'
 import { rankDescriptions, suggest } from './suggest'
-import { emptyDataFile, type Category, type DataFile, type Operation } from './types'
+import { addAccountPlan, addFixedItem, deleteAccountPlan, deleteFixedItem, fixedTotal, toTransfer, updateFixedItem } from './transfers'
+import { emptyDataFile, type AccountPlan, type Category, type DataFile, type Operation } from './types'
 
 const HEADER =
   '﻿"Date Opération";"Date Valeur";Libellé;"Libellé Suggéré";Catégorie;"Catégorie Parente";Solde;Commentaire;"Numéro Compte";"Libellé Compte";Solde;Pointage'
@@ -231,5 +232,38 @@ describe('misc', () => {
     const invite = { clientId: 'abc.apps.googleusercontent.com', folderId: 'f1', email: 'éa@x.fr' }
     expect(decodeInvite(encodeInvite(invite))).toEqual(invite)
     expect(decodeInvite('garbage')).toBeNull()
+  })
+})
+
+describe('transfers', () => {
+  const plan: AccountPlan = {
+    id: 'p',
+    name: 'Courant',
+    balanceCents: 250000,
+    reserveCents: 30000,
+    items: [
+      { id: 'a', name: 'Loyer', amountCents: 90000, direction: 'debit' },
+      { id: 'b', name: 'APL', amountCents: 20000, direction: 'credit' },
+    ],
+  }
+
+  it('nets debits against credits', () => {
+    expect(fixedTotal(plan.items)).toBe(70000)
+  })
+
+  it('computes what is left to transfer', () => {
+    expect(toTransfer(plan)).toBe(150000)
+    expect(toTransfer({ ...plan, balanceCents: 50000 })).toBe(-50000)
+    expect(toTransfer({ id: 'q', name: 'Vide', items: [] })).toBe(0)
+  })
+
+  it('edits plans without touching operations', () => {
+    let data = addAccountPlan(emptyDataFile('a@b.c'), 'p', 'Courant')
+    data = addFixedItem(data, 'p', { id: 'x', name: 'Loyer', amountCents: 100, direction: 'debit' })
+    data = updateFixedItem(data, 'p', 'x', { direction: 'credit' })
+    expect(data.accountPlans?.[0].items[0].direction).toBe('credit')
+    data = deleteFixedItem(data, 'p', 'x')
+    expect(data.accountPlans?.[0].items).toEqual([])
+    expect(deleteAccountPlan(data, 'p').accountPlans).toEqual([])
   })
 })

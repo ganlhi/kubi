@@ -10,6 +10,7 @@ import { MonthReviewDialog } from './components/MonthReviewDialog'
 import { OperationsView } from './components/OperationsView'
 import { Setup } from './components/Setup'
 import { StatsView } from './components/StatsView'
+import { TransfersView } from './components/TransfersView'
 import { btn } from './components/format'
 
 const SCAN_INTERVAL_MS = 10 * 60_000
@@ -51,7 +52,7 @@ export default function App() {
   return <Main />
 }
 
-type Tab = 'operations' | 'categories' | 'stats'
+type Tab = 'operations' | 'categories' | 'stats' | 'transfers'
 
 function Main() {
   const { clientId, folder, confirmed, pending, busy, error, alerts, lastImport, connect, sync, signIn, setFolder, dismissAlert } =
@@ -119,6 +120,7 @@ function Main() {
               ['operations', 'Opérations'],
               ['categories', 'Catégories'],
               ['stats', 'Statistiques'],
+              ['transfers', 'Répartition'],
             ] as const
           ).map(([key, label]) => (
             <button key={key} className={tab === key ? btn.secondary : btn.plain} onClick={() => setTab(key)}>
@@ -126,7 +128,7 @@ function Main() {
             </button>
           ))}
         </nav>
-        {month && tab !== 'stats' && (
+        {month && (tab === 'operations' || tab === 'categories') && (
           <select className="text-sm border border-stone-300 rounded-lg px-2 py-1" value={month} onChange={(e) => setChosenMonth(e.target.value)}>
             {monthList.map((m) => (
               <option key={m} value={m}>
@@ -193,8 +195,10 @@ function Main() {
           )
         ) : tab === 'categories' ? (
           <CategoriesView data={data} month={month ?? new Date().toISOString().slice(0, 7)} readOnly={readOnly} />
-        ) : (
+        ) : tab === 'stats' ? (
           <StatsView data={data} months={months} />
+        ) : (
+          <TransfersView data={data} readOnly={readOnly} />
         )}
       </main>
 

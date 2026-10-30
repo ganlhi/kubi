@@ -24,6 +24,13 @@ export function parseEuros(text: string): number | null {
   return Math.round(Number(cleaned) * 100)
 }
 
+/** Like `parseEuros`, also accepting a negative amount such as an overdrawn balance. */
+export function parseSignedEuros(text: string): number | null {
+  const trimmed = text.trim().replace(/^[−-]\s*/, '')
+  const cents = parseEuros(trimmed)
+  return cents === null ? null : trimmed === text.trim() ? cents : -cents
+}
+
 export const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 const base = 'text-sm font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
