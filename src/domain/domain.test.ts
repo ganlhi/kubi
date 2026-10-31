@@ -6,7 +6,7 @@ import { budgetFor, summarizeMonth, withBudgetFrom } from './budgets'
 import { addTemporary, deleteCategory, deleteTemporary, duplicateCandidates, mergeDuplicates, setDescription } from './edits'
 import { suggestColor } from './colors'
 import { decodeInvite, encodeInvite } from './invite'
-import { rankDescriptions, suggest } from './suggest'
+import { fuzzyMatches, rankDescriptions, suggest } from './suggest'
 import { addAccountPlan, addFixedItem, deleteAccountPlan, deleteFixedItem, fixedTotal, toTransfer, updateFixedItem } from './transfers'
 import { emptyDataFile, type AccountPlan, type Category, type DataFile, type Operation } from './types'
 
@@ -253,6 +253,19 @@ describe('misc', () => {
     expect(suggest(options, 'cour')).toEqual(['Secours', 'Courses', 'Cours'])
     expect(suggest(options, 'ecr')).toEqual(['Écran'])
     expect(suggest(options, 'Cours')).toEqual(['Secours', 'Courses'])
+  })
+
+  it('searches labels and descriptions loosely', () => {
+    const texts = ['CB CARREFOUR MARKET 12/10', 'Courses de la semaine']
+    expect(fuzzyMatches(texts, '')).toBe(true)
+    expect(fuzzyMatches(texts, 'carrefour')).toBe(true)
+    expect(fuzzyMatches(texts, 'crfour semaine')).toBe(true)
+    expect(fuzzyMatches(texts, '12/10')).toBe(true)
+    expect(fuzzyMatches(texts, 'cours sémaine')).toBe(true)
+    expect(fuzzyMatches(texts, 'carrefour lidl')).toBe(false)
+    // Left-out letters stay within a word, starting with its first letter.
+    expect(fuzzyMatches(texts, 'cm')).toBe(false)
+    expect(fuzzyMatches(['Dentiste', undefined], 'dtst')).toBe(true)
   })
 
   it('round-trips an invitation', () => {

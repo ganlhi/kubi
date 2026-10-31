@@ -11,6 +11,26 @@ const normalize = (text: string): string =>
 /** Whether `text` contains `query`, ignoring case and accents. */
 export const matches = (text: string, query: string): boolean => normalize(text).includes(normalize(query.trim()))
 
+/** Whether the letters of `term` appear in `word` in order, gaps allowed. */
+const isSubsequence = (term: string, word: string): boolean => {
+  let i = 0
+  for (const c of word) if (c === term[i]) i++
+  return i === term.length
+}
+
+/**
+ * Loose search, ignoring case and accents: every word of `query` must be found
+ * in one of `texts`, as is or with letters left out (« crfour » finds
+ * « Carrefour »). Left-out letters only within a single word, so short terms
+ * do not match everything.
+ */
+export function fuzzyMatches(texts: (string | undefined)[], query: string): boolean {
+  const terms = normalize(query).split(/\s+/).filter(Boolean)
+  const haystacks = texts.filter((t): t is string => !!t).map(normalize)
+  const words = haystacks.flatMap((h) => h.split(/[^\p{L}\p{N}]+/u).filter(Boolean))
+  return terms.every((term) => haystacks.some((h) => h.includes(term)) || words.some((w) => w[0] === term[0] && isSubsequence(term, w)))
+}
+
 /** Every description in use, most frequent first, then alphabetically. */
 export function rankDescriptions(operations: Operation[]): string[] {
   const counts = new Map<string, number>()

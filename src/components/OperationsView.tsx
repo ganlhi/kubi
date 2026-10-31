@@ -14,7 +14,7 @@ import {
 import { addMonths, calendarMonth, compareOperations, defaultFlagMonth, monthLabel } from '../domain/months'
 import type { DataFile, MonthKey, Operation } from '../domain/types'
 import { useKubi } from '../state/store'
-import { rankDescriptions } from '../domain/suggest'
+import { fuzzyMatches, rankDescriptions } from '../domain/suggest'
 import { BudgetSummary } from './BudgetSummary'
 import { BudgetPeek, MobileOperationList, OperationSheet } from './MobileOperations'
 import { CategorySelect } from './CategorySelect'
@@ -38,6 +38,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const [merging, setMerging] = useState(false)
   const [adding, setAdding] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
+  const [query, setQuery] = useState('')
   const mobile = useIsMobile()
   // Phone only: the operation open in a sheet, the summary sheet, and the uncategorized filter it offers.
   const [editing, setEditing] = useState<string | null>(null)
@@ -45,8 +46,23 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const [onlyUncategorized, setOnlyUncategorized] = useState(false)
 
   const operations = useMemo(
-    () => data.operations.filter((o) => months.get(o.id) === month).sort(compareOperations).reverse(),
-    [data.operations, months, month],
+    () =>
+      data.operations
+        .filter((o) => months.get(o.id) === month && fuzzyMatches([o.label, o.description], query))
+        .sort(compareOperations)
+        .reverse(),
+    [data.operations, months, month, query],
+  )
+  const emptyMessage = query.trim() ? 'Aucune opération ne correspond à la recherche.' : 'Aucune opération ce mois-ci.'
+  const searchField = (
+    <input
+      type="search"
+      className={`${input} sm:!w-72`}
+      placeholder="Rechercher un libellé, une description…"
+      aria-label="Rechercher dans les opérations"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+    />
   )
   const summary = useMemo(() => summarizeMonth(month, data.operations, months, data.categories), [month, data, months])
   const descriptions = useMemo(() => rankDescriptions(data.operations), [data.operations])
@@ -165,6 +181,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
     return (
       <div className="flex flex-col gap-3">
         <BudgetPeek summary={summary} onOpen={() => setShowSummary(true)} />
+        {searchField}
         {candidates.length > 0 && !readOnly && (
           <button
             className="self-start flex items-center gap-2 rounded-full bg-stone-200 text-stone-800 text-sm font-medium px-3 h-9 cursor-pointer"
@@ -185,7 +202,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
         )}
         {shown.length === 0 && (
           <p className="text-stone-500 text-sm p-4">
-            {onlyUncategorized ? 'Toutes les opérations ont une catégorie.' : 'Aucune opération ce mois-ci.'}
+            {onlyUncategorized && !query.trim() ? 'Toutes les opérations ont une catégorie.' : emptyMessage}
           </p>
         )}
         <MobileOperationList
@@ -268,7 +285,9 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
       </aside>
 
       <section className="flex-1 min-w-0 flex flex-col gap-2 w-full">
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {searchField}
+          <div className="flex-1" />
           {candidates.length > 0 && (
             <button className={btn.secondary} disabled={readOnly} onClick={() => setSuggesting(true)}>
               {suggestionLabel(candidates.length)}
@@ -286,7 +305,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
             </div>
           </div>
         )}
-        {operations.length === 0 && <p className="text-stone-500 text-sm p-4">Aucune opération ce mois-ci.</p>}
+        {operations.length === 0 && <p className="text-stone-500 text-sm p-4">{emptyMessage}</p>}
         {operations.map((op) => (
           <OperationRow
             key={op.id}
