@@ -31,10 +31,17 @@ function Gauge({ label, color, spent, budget, ratio, status }: {
   )
 }
 
-export function BudgetSummary({ summary }: { summary: MonthSummary }) {
+/** `bare` drops the card and its title, for the phone's summary sheet. */
+export function BudgetSummary({ summary, bare = false }: { summary: MonthSummary; bare?: boolean }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 lg:max-h-[calc(100svh-var(--header-h,0px)-2rem)] lg:overflow-y-auto">
-      <h2 className="font-semibold">Synthèse</h2>
+    <div
+      className={
+        bare
+          ? 'flex flex-col gap-4'
+          : 'bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 lg:max-h-[calc(100svh-var(--header-h,0px)-2rem)] lg:overflow-y-auto'
+      }
+    >
+      {!bare && <h2 className="font-semibold">Synthèse</h2>}
       <Gauge
         label="Budget total"
         spent={summary.totalSpentCents}

@@ -14,10 +14,12 @@ import type { DataFile, MonthKey, Operation } from '../domain/types'
 import { useKubi } from '../state/store'
 import { rankDescriptions } from '../domain/suggest'
 import { BudgetSummary } from './BudgetSummary'
+import { BudgetPeek, MobileOperationList, OperationSheet } from './MobileOperations'
 import { CategorySelect } from './CategorySelect'
 import { DescriptionInput } from './DescriptionInput'
 import { MonthInput } from './MonthInput'
 import { Modal } from './ui'
+import { useIsMobile } from './useIsMobile'
 import { btn, formatCents, formatDate, input, parseEuros, parseFrenchDate } from './format'
 
 interface Props {
@@ -33,6 +35,11 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const [flagging, setFlagging] = useState<Operation | null>(null)
   const [merging, setMerging] = useState(false)
   const [adding, setAdding] = useState(false)
+  const mobile = useIsMobile()
+  // Phone only: the operation open in a sheet, the summary sheet, and the uncategorized filter it offers.
+  const [editing, setEditing] = useState<string | null>(null)
+  const [showSummary, setShowSummary] = useState(false)
+  const [onlyUncategorized, setOnlyUncategorized] = useState(false)
 
   const operations = useMemo(
     () => data.operations.filter((o) => months.get(o.id) === month).sort(compareOperations).reverse(),
@@ -59,79 +66,50 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
     }
   }
 
-  return (
-    <div className="flex flex-col lg:flex-row gap-4 items-start">
-      <aside className="w-full lg:w-80 lg:order-2 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] shrink-0">
-        <BudgetSummary summary={summary} />
-      </aside>
-
-      <section className="flex-1 min-w-0 flex flex-col gap-2 w-full">
-        <div className="flex justify-end">
-          <button className={btn.secondary} disabled={readOnly} onClick={() => setAdding(true)}>
-            + Opération temporaire
+  const selectionLabel = `${picked.length} opération${picked.length > 1 ? 's' : ''} sélectionnée${picked.length > 1 ? 's' : ''}`
+  const selectionButtons = (
+    <>
+      <button className={btn.plain} onClick={() => setSelected([])}>
+        Annuler
+      </button>
+      {single &&
+        (single.monthStart ? (
+          <button
+            className={btn.secondary}
+            disabled={readOnly}
+            onClick={() => {
+              mutate((d) => setMonthStart(d, single.id, undefined))
+              setSelected([])
+            }}
+          >
+            Retirer le début de mois
           </button>
-        </div>
-        {picked.length > 0 && (
-          <div className="sticky top-[var(--header-h,0px)] z-30 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span>
-              {picked.length} opération{picked.length > 1 ? 's' : ''} sélectionnée{picked.length > 1 ? 's' : ''}
-            </span>
-            <div className="flex flex-wrap gap-2">
-              <button className={btn.plain} onClick={() => setSelected([])}>
-                Annuler
-              </button>
-              {single &&
-                (single.monthStart ? (
-                  <button
-                    className={btn.secondary}
-                    disabled={readOnly}
-                    onClick={() => {
-                      mutate((d) => setMonthStart(d, single.id, undefined))
-                      setSelected([])
-                    }}
-                  >
-                    Retirer le début de mois
-                  </button>
-                ) : (
-                  <button className={btn.primary} disabled={readOnly} onClick={() => setFlagging(single)}>
-                    📅 Démarrer un nouveau mois ici
-                  </button>
-                ))}
-              {single?.temporary && (
-                <button
-                  className={btn.danger}
-                  disabled={readOnly}
-                  onClick={() => {
-                    mutate((d) => deleteTemporary(d, single.id))
-                    setSelected([])
-                  }}
-                >
-                  Supprimer
-                </button>
-              )}
-              {picked.length === 2 && (
-                <button className={btn.primary} disabled={readOnly} onClick={markDuplicates}>
-                  Marquer comme doublons
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        {operations.length === 0 && <p className="text-stone-500 text-sm p-4">Aucune opération ce mois-ci.</p>}
-        {operations.map((op) => (
-          <OperationRow
-            key={op.id}
-            op={op}
-            data={data}
-            descriptions={descriptions}
-            month={months.get(op.id)!}
-            selected={selected.includes(op.id)}
-            readOnly={readOnly}
-            onToggle={() => toggle(op.id)}
-          />
+        ) : (
+          <button className={btn.primary} disabled={readOnly} onClick={() => setFlagging(single)}>
+            📅 Démarrer un nouveau mois ici
+          </button>
         ))}
-      </section>
-
+      {single?.temporary && (
+        <button
+          className={btn.danger}
+          disabled={readOnly}
+          onClick={() => {
+            mutate((d) => deleteTemporary(d, single.id))
+            setSelected([])
+          }}
+        >
+          Supprimer
+        </button>
+      )}
+      {picked.length === 2 && (
+        <button className={btn.primary} disabled={readOnly} onClick={markDuplicates}>
+          Marquer comme doublons
+        </button>
+      )}
+    </>
+  )
+  const dialogs = (
+    <>
       {flagging && (
         <FlagDialog
           op={flagging}
@@ -163,6 +141,140 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
           }}
         />
       )}
+    </>
+  )
+
+  if (mobile) {
+    // From all operations: one whose month is changed in the sheet leaves this month's list but stays open.
+    const editingOp = editing ? data.operations.find((o) => o.id === editing) : undefined
+    const shown = onlyUncategorized ? operations.filter((o) => !o.categoryId) : operations
+    return (
+      <div className="flex flex-col gap-3">
+        <BudgetPeek summary={summary} onOpen={() => setShowSummary(true)} />
+        {onlyUncategorized && (
+          <button
+            className="self-start flex items-center gap-2 rounded-full bg-orange-100 text-orange-900 text-sm font-medium pl-3 pr-2 h-9 cursor-pointer"
+            onClick={() => setOnlyUncategorized(false)}
+          >
+            Sans catégorie uniquement
+            <span aria-hidden="true">✕</span>
+            <span className="sr-only">(tout afficher)</span>
+          </button>
+        )}
+        {shown.length === 0 && (
+          <p className="text-stone-500 text-sm p-4">
+            {onlyUncategorized ? 'Toutes les opérations ont une catégorie.' : 'Aucune opération ce mois-ci.'}
+          </p>
+        )}
+        <MobileOperationList
+          operations={shown}
+          data={data}
+          selected={selected}
+          onOpen={(op) => setEditing(op.id)}
+          onToggle={(op) => toggle(op.id)}
+        />
+        {picked.length > 0 ? (
+          <>
+            {/* Room for the action bar, which covers the navigation while selecting. */}
+            <div className="h-16" />
+            <div className="fixed inset-x-0 bottom-0 z-50 bg-white border-t border-stone-200 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col gap-2">
+              <span className="text-sm font-semibold text-emerald-800">{selectionLabel}</span>
+              <div className="flex flex-wrap gap-2 [&_button]:min-h-11">{selectionButtons}</div>
+            </div>
+          </>
+        ) : (
+          <button
+            aria-label="Ajouter une opération temporaire"
+            className="fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-30 size-14 rounded-2xl bg-emerald-600 text-white shadow-lg flex items-center justify-center cursor-pointer disabled:opacity-50"
+            disabled={readOnly}
+            onClick={() => setAdding(true)}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        )}
+        {showSummary && (
+          <Modal title={`Synthèse · ${monthLabel(month)}`} onClose={() => setShowSummary(false)}>
+            <BudgetSummary summary={summary} bare />
+            {summary.uncategorizedCount > 0 && (
+              <button
+                className={`${btn.secondary} min-h-11`}
+                onClick={() => {
+                  setOnlyUncategorized(true)
+                  setShowSummary(false)
+                }}
+              >
+                Afficher les opérations non catégorisées
+              </button>
+            )}
+          </Modal>
+        )}
+        {editingOp && (
+          <Modal title="Opération" onClose={() => setEditing(null)}>
+            <OperationSheet
+              op={editingOp}
+              data={data}
+              descriptions={descriptions}
+              month={months.get(editingOp.id) ?? month}
+              readOnly={readOnly}
+              onFlag={() => {
+                setEditing(null)
+                setFlagging(editingOp)
+              }}
+              onUnflag={() => mutate((d) => setMonthStart(d, editingOp.id, undefined))}
+              onDelete={() => {
+                mutate((d) => deleteTemporary(d, editingOp.id))
+                setEditing(null)
+              }}
+              onSelect={() => {
+                setSelected([editingOp.id])
+                setEditing(null)
+              }}
+            />
+          </Modal>
+        )}
+        {dialogs}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 items-start">
+      <aside className="w-full lg:w-80 lg:order-2 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] shrink-0">
+        <BudgetSummary summary={summary} />
+      </aside>
+
+      <section className="flex-1 min-w-0 flex flex-col gap-2 w-full">
+        <div className="flex justify-end">
+          <button className={btn.secondary} disabled={readOnly} onClick={() => setAdding(true)}>
+            + Opération temporaire
+          </button>
+        </div>
+        {picked.length > 0 && (
+          <div className="sticky top-[var(--header-h,0px)] z-30 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span>{selectionLabel}</span>
+            <div className="flex flex-wrap gap-2">
+              {selectionButtons}
+            </div>
+          </div>
+        )}
+        {operations.length === 0 && <p className="text-stone-500 text-sm p-4">Aucune opération ce mois-ci.</p>}
+        {operations.map((op) => (
+          <OperationRow
+            key={op.id}
+            op={op}
+            data={data}
+            descriptions={descriptions}
+            month={months.get(op.id)!}
+            selected={selected.includes(op.id)}
+            readOnly={readOnly}
+            onToggle={() => toggle(op.id)}
+          />
+        ))}
+      </section>
+
+      {dialogs}
     </div>
   )
 }

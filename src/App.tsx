@@ -12,6 +12,8 @@ import { Setup } from './components/Setup'
 import { StatsView } from './components/StatsView'
 import { TransfersView } from './components/TransfersView'
 import { btn } from './components/format'
+import { BottomNav, MobileHeader, type Tab } from './components/MobileChrome'
+import { useIsMobile } from './components/useIsMobile'
 
 const SCAN_INTERVAL_MS = 10 * 60_000
 const REVIEW_SEEN_KEY = 'kubi-review-seen'
@@ -52,8 +54,6 @@ export default function App() {
   return <Main />
 }
 
-type Tab = 'operations' | 'categories' | 'stats' | 'transfers'
-
 function Main() {
   const { clientId, folder, confirmed, pending, busy, error, alerts, lastImport, connect, sync, signIn, setFolder, dismissAlert } =
     useKubi()
@@ -63,6 +63,7 @@ function Main() {
   const [inviting, setInviting] = useState(false)
   const [reviewSeen, setReviewSeen] = useState(readSeen)
   const header = useRef<HTMLElement>(null)
+  const mobile = useIsMobile()
 
   // What sticks under the header needs its height, which changes as its buttons wrap.
   useEffect(() => {
@@ -73,7 +74,7 @@ function Main() {
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [mobile])
 
   useEffect(() => {
     void connect()
@@ -109,61 +110,80 @@ function Main() {
   }
 
   const readOnly = !!error
+  const status =
+    busy === 'loading'
+      ? 'Chargement…'
+      : busy === 'importing'
+        ? 'Recherche d’exports…'
+        : pending.length > 0
+          ? 'Enregistrement…'
+          : lastImport
+            ? `${lastImport.added} opération(s) importée(s) à ${new Date(lastImport.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+            : null
 
   return (
     <div className="flex-1 flex flex-col">
-      <header ref={header} className="sticky top-0 z-40 bg-white border-b border-stone-200 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-lg font-semibold">Kubi</h1>
-        <nav className="flex gap-1">
-          {(
-            [
-              ['operations', 'Opérations'],
-              ['categories', 'Catégories'],
-              ['stats', 'Statistiques'],
-              ['transfers', 'Répartition'],
-            ] as const
-          ).map(([key, label]) => (
-            <button key={key} className={tab === key ? btn.secondary : btn.plain} onClick={() => setTab(key)}>
-              {label}
-            </button>
-          ))}
-        </nav>
-        {month && (tab === 'operations' || tab === 'categories') && (
-          <select className="text-sm border border-stone-300 rounded-lg px-2 py-1" value={month} onChange={(e) => setChosenMonth(e.target.value)}>
-            {monthList.map((m) => (
-              <option key={m} value={m}>
-                {monthLabel(m)}
-              </option>
+      {mobile ? (
+        <MobileHeader
+          ref={header}
+          month={month}
+          monthList={monthList}
+          showMonth={tab === 'operations' || tab === 'categories'}
+          onMonth={setChosenMonth}
+          status={status}
+          syncing={!!busy}
+          readOnly={readOnly}
+          folderName={folder?.name}
+          onSync={() => void sync()}
+          onInvite={() => setInviting(true)}
+          onFolder={() => setFolder(null)}
+        />
+      ) : (
+        <header ref={header} className="sticky top-0 z-40 bg-white border-b border-stone-200 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="text-lg font-semibold">Kubi</h1>
+          <nav className="flex gap-1">
+            {(
+              [
+                ['operations', 'Opérations'],
+                ['categories', 'Catégories'],
+                ['stats', 'Statistiques'],
+                ['transfers', 'Répartition'],
+              ] as const
+            ).map(([key, label]) => (
+              <button key={key} className={tab === key ? btn.secondary : btn.plain} onClick={() => setTab(key)}>
+                {label}
+              </button>
             ))}
-          </select>
-        )}
-        <div className="flex-1" />
-        <span className="text-xs text-stone-500">
-          {busy === 'loading'
-            ? 'Chargement…'
-            : busy === 'importing'
-              ? 'Recherche d’exports…'
-              : pending.length > 0
-                ? 'Enregistrement…'
-                : lastImport
-                  ? `${lastImport.added} opération(s) importée(s) à ${new Date(lastImport.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                  : null}
-        </span>
-        <button
-          className={`${btn.plain} !text-xl !leading-none`}
-          disabled={!!busy || readOnly}
-          onClick={() => void sync()}
-          title="Rechercher de nouveaux exports"
-        >
-          ⟳
-        </button>
-        <button className={btn.plain} disabled={readOnly} onClick={() => setInviting(true)}>
-          Inviter
-        </button>
-        <button className={btn.plain} onClick={() => setFolder(null)} title="Changer de dossier Drive">
-          📁 {folder?.name}
-        </button>
-      </header>
+          </nav>
+          {month && (tab === 'operations' || tab === 'categories') && (
+            <select className="text-sm border border-stone-300 rounded-lg px-2 py-1" value={month} onChange={(e) => setChosenMonth(e.target.value)}>
+              {monthList.map((m) => (
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex-1" />
+          <span className="text-xs text-stone-500">
+            {status}
+          </span>
+          <button
+            className={`${btn.plain} !text-xl !leading-none`}
+            disabled={!!busy || readOnly}
+            onClick={() => void sync()}
+            title="Rechercher de nouveaux exports"
+          >
+            ⟳
+          </button>
+          <button className={btn.plain} disabled={readOnly} onClick={() => setInviting(true)}>
+            Inviter
+          </button>
+          <button className={btn.plain} onClick={() => setFolder(null)} title="Changer de dossier Drive">
+            📁 {folder?.name}
+          </button>
+        </header>
+      )}
 
       {error && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-800 flex items-center gap-3">
@@ -182,7 +202,7 @@ function Main() {
         </div>
       ))}
 
-      <main className="flex-1 p-4 bg-stone-50">
+      <main className={mobile ? 'flex-1 bg-stone-50 px-3 pt-3 pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'flex-1 p-4 bg-stone-50'}>
         {!data ? (
           <p className="text-sm text-stone-500">{busy ? 'Chargement des données…' : ''}</p>
         ) : tab === 'operations' ? (
@@ -201,6 +221,7 @@ function Main() {
           <TransfersView data={data} readOnly={readOnly} />
         )}
       </main>
+      {mobile && <BottomNav tab={tab} onTab={setTab} />}
 
       {inviting && <InviteDialog onClose={() => setInviting(false)} />}
       {review && (
