@@ -195,6 +195,14 @@ describe('edits', () => {
     expect(merged.ignoredIds).toEqual([])
   })
 
+  it('describes the real operation with the temporary label when nothing else describes it', () => {
+    const withTemp = addTemporary(base, 'temp', { date: '2026-10-03', label: 'Dentiste', amountCents: -1 })
+    expect(mergeDuplicates(withTemp, 'blank', 'temp').operations.find((o) => o.id === 'blank')?.description).toBe('Dentiste')
+    // An imported duplicate's bank label is no description.
+    expect(mergeDuplicates(base, 'old', 'blank').operations.find((o) => o.id === 'old')?.description).toBe('Courses')
+    expect(mergeDuplicates(base, 'blank', 'set').operations.find((o) => o.id === 'blank')?.description).toBeUndefined()
+  })
+
   it('pairs temporary operations with uncategorised real ones of the same amount, closest first', () => {
     const ops = [
       op('far', '2026-09-01', -5000),

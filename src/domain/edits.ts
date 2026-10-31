@@ -58,7 +58,8 @@ export function mergeDuplicates(data: DataFile, keepId: string, dropId: string):
   if (!drop || keepId === dropId) return data
   const merged = updateOp(data, keepId, (keep) => ({
     ...keep,
-    description: keep.description ?? drop.description,
+    // A temporary operation's label was typed by hand: it beats the bank's as a description.
+    description: keep.description ?? drop.description ?? (drop.temporary ? drop.label : undefined),
     categoryId: keep.categoryId ?? drop.categoryId,
     monthStart: keep.monthStart ?? drop.monthStart,
   }))

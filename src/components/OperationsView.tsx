@@ -516,7 +516,7 @@ function SuggestedDuplicatesDialog({ candidates, data, readOnly, onClose, onMerg
         <>
           <p className="text-sm text-stone-600">
             Même montant, et l’opération réelle n’a pas encore de catégorie. Marquée comme doublon, la temporaire disparaît et sa
-            description, sa catégorie et son drapeau sont reportés sur la réelle.
+            description (à défaut, son libellé), sa catégorie et son drapeau sont reportés sur la réelle.
           </p>
           <PairCard title="Temporaire" op={current.temporary} data={data} />
           <PairCard title="Réelle" op={current.real} data={data} />
