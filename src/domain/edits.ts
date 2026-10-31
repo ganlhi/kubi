@@ -70,6 +70,31 @@ export function mergeDuplicates(data: DataFile, keepId: string, dropId: string):
   }
 }
 
+export interface DuplicateCandidate {
+  temporary: Operation
+  real: Operation
+}
+
+const dayDistance = (a: string, b: string): number => Math.abs(Date.parse(a) - Date.parse(b))
+
+/**
+ * Pairs worth merging: a temporary operation and an imported, uncategorised
+ * one of the same amount. The pairs of each temporary operation come closest
+ * date first, and temporary operations oldest first.
+ */
+export function duplicateCandidates(operations: Operation[]): DuplicateCandidate[] {
+  const reals = operations.filter((o) => !o.temporary && !o.categoryId)
+  return operations
+    .filter((o) => o.temporary)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.seq - b.seq)
+    .flatMap((temporary) =>
+      reals
+        .filter((real) => real.amountCents === temporary.amountCents)
+        .sort((a, b) => dayDistance(a.date, temporary.date) - dayDistance(b.date, temporary.date) || a.seq - b.seq)
+        .map((real) => ({ temporary, real })),
+    )
+}
+
 export function addCategory(data: DataFile, category: Omit<Category, 'budgets'> & { budgets?: Category['budgets'] }): DataFile {
   return { ...data, categories: [...data.categories, { budgets: [], ...category }] }
 }

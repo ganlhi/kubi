@@ -3,11 +3,13 @@ import { summarizeMonth } from '../domain/budgets'
 import {
   addTemporary,
   deleteTemporary,
+  duplicateCandidates,
   mergeDuplicates,
   setCategory,
   setDescription,
   setMonthOverride,
   setMonthStart,
+  type DuplicateCandidate,
 } from '../domain/edits'
 import { addMonths, calendarMonth, compareOperations, defaultFlagMonth, monthLabel } from '../domain/months'
 import type { DataFile, MonthKey, Operation } from '../domain/types'
@@ -35,6 +37,7 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   const [flagging, setFlagging] = useState<Operation | null>(null)
   const [merging, setMerging] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
   const mobile = useIsMobile()
   // Phone only: the operation open in a sheet, the summary sheet, and the uncategorized filter it offers.
   const [editing, setEditing] = useState<string | null>(null)
@@ -47,6 +50,8 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
   )
   const summary = useMemo(() => summarizeMonth(month, data.operations, months, data.categories), [month, data, months])
   const descriptions = useMemo(() => rankDescriptions(data.operations), [data.operations])
+  // Across all months: the real operation may land in another month than the temporary one.
+  const candidates = useMemo(() => duplicateCandidates(data.operations), [data.operations])
 
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s.slice(-1), id]))
@@ -130,6 +135,15 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
           }}
         />
       )}
+      {suggesting && (
+        <SuggestedDuplicatesDialog
+          candidates={candidates}
+          data={data}
+          readOnly={readOnly}
+          onClose={() => setSuggesting(false)}
+          onMerge={({ real, temporary }) => mutate((d) => mergeDuplicates(d, real.id, temporary.id))}
+        />
+      )}
       {merging && picked.length === 2 && (
         <MergeDialog
           pair={[picked[0], picked[1]]}
@@ -151,6 +165,14 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
     return (
       <div className="flex flex-col gap-3">
         <BudgetPeek summary={summary} onOpen={() => setShowSummary(true)} />
+        {candidates.length > 0 && !readOnly && (
+          <button
+            className="self-start flex items-center gap-2 rounded-full bg-stone-200 text-stone-800 text-sm font-medium px-3 h-9 cursor-pointer"
+            onClick={() => setSuggesting(true)}
+          >
+            {suggestionLabel(candidates.length)}
+          </button>
+        )}
         {onlyUncategorized && (
           <button
             className="self-start flex items-center gap-2 rounded-full bg-orange-100 text-orange-900 text-sm font-medium pl-3 pr-2 h-9 cursor-pointer"
@@ -246,7 +268,12 @@ export function OperationsView({ data, months, month, readOnly }: Props) {
       </aside>
 
       <section className="flex-1 min-w-0 flex flex-col gap-2 w-full">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {candidates.length > 0 && (
+            <button className={btn.secondary} disabled={readOnly} onClick={() => setSuggesting(true)}>
+              {suggestionLabel(candidates.length)}
+            </button>
+          )}
           <button className={btn.secondary} disabled={readOnly} onClick={() => setAdding(true)}>
             + Opération temporaire
           </button>
@@ -464,5 +491,74 @@ function MergeDialog({ pair, onClose, onKeep }: {
         Annuler
       </button>
     </Modal>
+  )
+}
+
+const suggestionLabel = (n: number) => `${n} doublon${n > 1 ? 's' : ''} possible${n > 1 ? 's' : ''}`
+
+const pairKey = ({ temporary, real }: DuplicateCandidate) => `${temporary.id}|${real.id}`
+
+/** Walks the suggested pairs one at a time; candidates follow the data, so a merge drops the pairs it settles. */
+function SuggestedDuplicatesDialog({ candidates, data, readOnly, onClose, onMerge }: {
+  candidates: DuplicateCandidate[]
+  data: DataFile
+  readOnly: boolean
+  onClose: () => void
+  onMerge: (pair: DuplicateCandidate) => void
+}) {
+  const [skipped, setSkipped] = useState<string[]>([])
+  const remaining = candidates.filter((c) => !skipped.includes(pairKey(c)))
+  const current = remaining[0]
+
+  return (
+    <Modal title="Doublons possibles" onClose={onClose}>
+      {current ? (
+        <>
+          <p className="text-sm text-stone-600">
+            Même montant, et l’opération réelle n’a pas encore de catégorie. Marquée comme doublon, la temporaire disparaît et sa
+            description, sa catégorie et son drapeau sont reportés sur la réelle.
+          </p>
+          <PairCard title="Temporaire" op={current.temporary} data={data} />
+          <PairCard title="Réelle" op={current.real} data={data} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-stone-500">
+              {remaining.length} paire{remaining.length > 1 ? 's' : ''} à examiner
+            </span>
+            <div className="flex gap-2">
+              <button className={btn.secondary} onClick={() => setSkipped((s) => [...s, pairKey(current)])}>
+                Passer
+              </button>
+              <button className={btn.primary} disabled={readOnly} onClick={() => onMerge(current)}>
+                Marquer comme doublon
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-stone-600">Plus aucune paire à examiner.</p>
+          <div className="flex justify-end">
+            <button className={btn.primary} onClick={onClose}>
+              Fermer
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
+function PairCard({ title, op, data }: { title: string; op: Operation; data: DataFile }) {
+  const category = data.categories.find((c) => c.id === op.categoryId)
+  return (
+    <div className="border border-stone-200 rounded-lg p-3 border-l-4" style={{ borderLeftColor: category?.color ?? '#d6d3d1' }}>
+      <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">{title}</div>
+      <div className="text-sm font-medium">{op.label}</div>
+      <div className="text-xs text-stone-500">
+        {formatDate(op.date)} · {formatCents(op.amountCents)}
+        {op.description && ` · ${op.description}`}
+        {category && ` · ${category.name}`}
+      </div>
+    </div>
   )
 }

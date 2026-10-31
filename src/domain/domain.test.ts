@@ -3,7 +3,7 @@ import { CsvFormatError, exportTimestamp, parseAmountCents, parseExport } from '
 import { importRows, operationIds } from './importOps'
 import { addMonths, assignMonths, defaultFlagMonth } from './months'
 import { budgetFor, summarizeMonth, withBudgetFrom } from './budgets'
-import { addTemporary, deleteCategory, deleteTemporary, mergeDuplicates, setDescription } from './edits'
+import { addTemporary, deleteCategory, deleteTemporary, duplicateCandidates, mergeDuplicates, setDescription } from './edits'
 import { suggestColor } from './colors'
 import { decodeInvite, encodeInvite } from './invite'
 import { rankDescriptions, suggest } from './suggest'
@@ -193,6 +193,25 @@ describe('edits', () => {
     expect(merged.operations.find((o) => o.id === 'blank')?.description).toBe('Santé')
     expect(merged.operations.some((o) => o.id === 'temp')).toBe(false)
     expect(merged.ignoredIds).toEqual([])
+  })
+
+  it('pairs temporary operations with uncategorised real ones of the same amount, closest first', () => {
+    const ops = [
+      op('far', '2026-09-01', -5000),
+      op('near', '2026-10-05', -5000),
+      op('categorised', '2026-10-03', -5000, { categoryId: 'food' }),
+      op('other', '2026-10-03', -4999),
+      op('t2', '2026-10-10', -4999, { temporary: true }),
+      op('t1', '2026-10-03', -5000, { temporary: true }),
+      op('t3', '2026-10-03', -5000, { temporary: true, seq: 1 }),
+    ]
+    expect(duplicateCandidates(ops).map((p) => `${p.temporary.id}:${p.real.id}`)).toEqual([
+      't1:near',
+      't1:far',
+      't3:near',
+      't3:far',
+      't2:other',
+    ])
   })
 
   it('deletes only temporary operations', () => {
