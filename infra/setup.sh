@@ -47,6 +47,16 @@ exists gcloud firestore databases describe --database='(default)' ||
 echo "→ Dépôt d'images"
 exists gcloud artifacts repositories describe kubi --location "$REGION" ||
   gcloud artifacts repositories create kubi --repository-format docker --location "$REGION"
+# Every deploy pushes an image; keep the last few, so storage stays in the free tier.
+CLEANUP_POLICY=$(mktemp)
+cat >"$CLEANUP_POLICY" <<'JSON'
+[
+  { "name": "keep-recent", "action": { "type": "Keep" }, "mostRecentVersions": { "keepCount": 3 } },
+  { "name": "delete-older", "action": { "type": "Delete" }, "condition": { "tagState": "any" } }
+]
+JSON
+gcloud artifacts repositories set-cleanup-policies kubi --location "$REGION" --policy "$CLEANUP_POLICY" --no-dry-run >/dev/null
+rm -f "$CLEANUP_POLICY"
 
 echo "→ Comptes de service"
 service_account kubi-api "Kubi API (Firestore, Drive)"
