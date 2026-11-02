@@ -2,29 +2,29 @@
 
 Le nom vient du dieu Kubera, un dieu de la richesse, traditionnellement gardien des trésors dans les traditions hindoues et bouddhiques. 
 
-Il s'agit d'une application web, 100% frontend, qui permet de gérer son budget : catégorisation des opérations, suivi de plusieurs lignes de budget, synthèse au changement de mois... 
+Il s'agit d'une application web fullstack (front React, API sur GCP) qui permet de gérer son budget : catégorisation des opérations, suivi de plusieurs lignes de budget, synthèse au changement de mois... 
 
 # Fondations techniques
 
 ## Source de données
 
-En l'absence d'un backend, l'application utilise Google Drive pour stocker un fichier de données. Elle utilise également Google Drive pour accéder à des fichiers exportés de l'application bancaire de l'utilisateur, afin d'en extraire les opérations bancaires. 
+Les données (opérations, catégories, membres, configuration) sont stockées dans Firestore et servies par une API sur Cloud Run. Google Drive ne sert plus qu'à déposer les fichiers exportés de l'application bancaire de l'utilisateur, que le serveur lit pour en extraire les opérations.
 
 ## Authentification
 
-Quand l'application se lance, si elle n'a jamais été configurée, elle va demander à l'utilisateur de s'authentifier à l'aide de son compte Google, puis si ce n'est pas déjà fait, de fournir un "OAuth Client ID" pour accéder à un dossier Google Drive. Dans ce dossier, un fichier de données sera créé, s'il n'existe pas déjà, et il contiendra notamment l'email de l'utilisateur dans la liste des comptes autorisés. Si par contre le fichier existe déjà et ne contient pas l'email en question, il sera ajouté à la liste des utilisateurs. 
+L'utilisateur se connecte avec son compte Google (Firebase Auth). Le serveur vérifie l'ID token à chaque requête et n'accepte que les emails de la liste des membres, stockée en base. Le premier membre est fixé par la configuration du déploiement.
 
-Une fonction d'invitation sera fournie, permettant d'envoyer à un autre utilisateur un lien vers l'application avec une chaine de caractères encryptée en paramètre, contenant l'email de l'invité et le "OAuth Client ID" afin que cet autre utilisateur accède facilement à l'application correctement configurée. 
+Un membre peut en inviter un autre en ajoutant son email à la liste, puis en lui envoyant l'adresse de l'application.
 
 # Import des opérations
 
-Au lancement de l'application, puis une fois toutes les 10 minutes si l'application reste ouverte, le dossier Google Drive sera scanné pour vérifier la présence de nouveaux fichiers d'exports, sur le modèle de @export-operations-28-10-2026_13-31-55.csv (le modèle du nom de fichier et la structure interne de celui-ci sont à considérer). Les opérations seront importées dans le fichier de données principal de l'application. Chaque opération se verra attribuer un ID construit sur la base des colonnes suivantes : 
+Toutes les 10 minutes (Cloud Scheduler), et à la demande depuis l'application, le dossier Google Drive configuré est scanné par le serveur pour vérifier la présence de nouveaux fichiers d'exports, sur le modèle de @export-operations-28-10-2026_13-31-55.csv (le modèle du nom de fichier et la structure interne de celui-ci sont à considérer). Les opérations sont importées dans la base de l'application. Chaque opération se verra attribuer un ID construit sur la base des colonnes suivantes : 
 - Date Opération
 - Date Valeur
 - Libellé
 - Solde (la première colonne Solde, il y en a deux; la première étant le montant de la transaction, la seconde étant le solde du compte après la transaction)
 
-Il faut un moyen de vérouiller l'import pendant qu'il se fait, pour qu'une autre instance de l'app n'essaie pas de faire un import au même moment. 
+L'import est verrouillé pendant qu'il se fait, pour que deux exécutions ne se chevauchent pas. 
 
 Comme plusieurs fichiers d'exports bancaires peuvent contenir la même opération, la détection dans un nouveau fichier d'un ID existant doit l'ignorer si l'opération est identique, et sinon afficher une alerte demandant à l'utilisateur quoi faire (garder l'ancienne ou garder la nouvelle).
 
@@ -69,24 +69,26 @@ Quand un nouveau mois est démarré, chaque instance de l'application doit affic
 # Décisions de conception
 
 ## Stack
-- Vite + React + TypeScript, déployé en statique sur GitHub Pages.
-- Recharts pour les graphiques, Vitest pour la logique métier (parsing CSV, IDs, rattachement aux mois, calculs de budget).
+- npm workspaces : `packages/domain` (logique métier pure, partagée), `web` (Vite + React + TypeScript), `server` (Node, Hono, firebase-admin).
+- Hébergement : Firebase Hosting pour le front, avec `/api/**` redirigé vers Cloud Run `kubi-api` ; Firestore ; Cloud Scheduler pour l'import. Mise en place décrite dans `infra/README.md`, déploiement par GitHub Actions (fédération d'identité, pas de clé).
+- Recharts pour les graphiques, Vitest pour la logique métier et le serveur (store en mémoire et faux Drive, pas d'émulateur).
 - Interface en français uniquement, euros uniquement, mise en page responsive (sur mobile, la synthèse passe au-dessus de la liste).
 
 ## Accès Google Drive et utilisateurs
-- Même modèle que https://github.com/ganlhi/wargame-ai (`src/sync/googleAuth.ts`, `src/sync/driveClient.ts`) : Google Identity Services, token d'accès obtenu par popup avec le seul OAuth Client ID, renouvellement silencieux (`prompt: 'none'`), scope `drive` complet, app OAuth en mode « Testing ».
-- Un seul Client ID partagé par tous les utilisateurs ; chacun consent avec son propre compte Google. L'« authentification » consiste à vérifier que l'email (via `drive/v3/about`) figure dans la liste des comptes autorisés du fichier de données. Cette liste est indicative : le vrai contrôle d'accès est le partage Drive + la liste des utilisateurs de test OAuth.
-- Choix du dossier via un navigateur de dossiers interne (comme wargame-ai), pas le Google Picker.
-- Invitation : lien contenant Client ID + ID du dossier + email de l'invité, encodé en base64url (pas de chiffrement). L'app partage le dossier avec l'invité (`permissions.create`) et ajoute son email à la liste. L'ajout aux utilisateurs de test dans la console GCP reste manuel.
+- Drive est lu par le compte de service de l'API (`kubi-api@`), avec lequel l'utilisateur partage le dossier des exports en éditeur. Plus de Client ID OAuth, ni d'utilisateurs de test.
+- La configuration (dossier choisi) est en base, commune à tous les membres. Choix du dossier via un navigateur interne, parmi les dossiers partagés avec le compte de service.
+- Membres : collection Firestore ; tout membre peut en ajouter ou en retirer (sauf lui-même).
+- Développement local sans GCP : `KUBI_DEV_EMAIL` (connexion simulée, store en mémoire) et `KUBI_DEV_DRIVE_DIR` (un dossier local tient lieu de Drive).
 
 ## Concurrence et synchronisation
-- Toutes les écritures du fichier de données utilisent une concurrence optimiste : relire la version avant d'écrire ; si elle a changé, recharger, rejouer la modification, réécrire.
-- L'import utilise en plus un fichier `.lock` horodaté avec expiration (~2 min).
-- Le fichier de données est relu (si sa version a changé) à chaque scan de 10 min, au retour du focus sur l'onglet, et avant chaque écriture.
-- Pas de mode hors-ligne : sans accès à Drive, l'app est en lecture seule.
+- Toute modification passe par une commande (`packages/domain/src/commands.ts`) : le front l'applique aussitôt pour l'affichage, le serveur l'applique sur ses données dans une transaction Firestore.
+- Un compteur de version unique (`meta/config.version`) est relu dans chaque transaction et incrémenté à chaque écriture : une écriture faite sur des données périmées est refusée et rejouée. Le serveur garde les données en mémoire tant que la version ne bouge pas.
+- Le serveur écrit seulement les documents modifiés (diff de deux `DataFile`) ; l'ID de document d'une opération est un hash de son ID métier.
+- L'import prend un verrou `locks/import` avec expiration (~2 min).
+- Le front relit les données (si la version a changé) toutes les 10 min et au retour du focus. Sans accès au serveur, l'app est en lecture seule.
 
 ## Import
-- Seuls les fichiers `export-operations-DD-MM-YYYY_HH-MM-SS.csv` sont importés, dans l'ordre chronologique du timestamp du nom. Fichier à l'en-tête invalide : alerte, laissé en place.
+- Seuls les fichiers `export-operations-DD-MM-YYYY_HH-MM-SS.csv` sont importés, dans l'ordre chronologique du timestamp du nom. Fichier à l'en-tête invalide : alerte (stockée en base, levée une seule fois même après avoir été fermée), laissé en place.
 - Format : UTF-8 avec BOM, séparateur `;`, montant (premier `Solde`) avec virgule décimale. Le second `Solde` est un solde de fin de journée (identique pour toutes les opérations d'un même jour), il n'ordonne rien.
 - Une fois importé, le fichier est déplacé dans un sous-dossier `importés/`.
 - Un seul compte bancaire : le premier `Numéro Compte` rencontré est mémorisé ; un fichier contenant un autre numéro déclenche une alerte.

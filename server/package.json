@@ -1,0 +1,23 @@
+{
+  "name": "@kubi/server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "dev:local": "KUBI_DEV_EMAIL=dev@kubi.test KUBI_DEV_DRIVE_DIR=../dev-drive tsx watch src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --alias:@kubi/domain=../packages/domain/src --outfile=dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "firebase-admin": "^14.5.0",
+    "google-auth-library": "^11.3.2",
+    "hono": "^4.13.16"
+  },
+  "devDependencies": {
+    "@kubi/domain": "*",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
+  }
+}
