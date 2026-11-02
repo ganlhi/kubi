@@ -26,3 +26,6 @@ dist-ssr
 # Exports bancaires réels : données personnelles
 *.csv
 .claude
+
+# Faux Drive du serveur en développement local
+dev-drive

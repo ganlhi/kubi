@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
@@ -8,16 +8,21 @@ on:
 
 permissions:
   contents: read
-  pages: write
+  # Exchanged for Google credentials through Workload Identity Federation (see infra/setup.sh).
   id-token: write
 
 # Never let two deploys race; a queued one supersedes the one before it.
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: true
 
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/kubi/kubi-api:${{ github.sha }}
+
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,31 +36,40 @@ jobs:
 
       # Gate the deploy on the checks passing, so a broken build never ships.
       - run: npm run lint
+      - run: npm run typecheck
       - run: npm test
-      # The Google OAuth client ID for Drive sync. A client ID is public, so it
-      # is a repository *variable* (Settings → Secrets and variables → Actions
-      # → Variables), not a secret. Leave it unset to ship without a default;
-      # users can still paste one into the app at first launch.
-      - run: npm run build
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push the API image
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -f server/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Public at the network level: Firebase Hosting can only rewrite to a
+      # public service. The API checks a Firebase ID token on every call, and
+      # Cloud Scheduler's OIDC token on the import endpoint.
+      - name: Deploy the API
+        run: |
+          gcloud run deploy kubi-api --image "$IMAGE" --region "$REGION" \
+            --service-account "${{ vars.KUBI_API_SA }}" \
+            --allow-unauthenticated --max-instances 2 --memory 512Mi \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DRIVE_SERVICE_ACCOUNT=${{ vars.KUBI_API_SA }},SCHEDULER_SERVICE_ACCOUNT=${{ vars.KUBI_SCHEDULER_SA }},SCHEDULER_AUDIENCE=kubi-api-import,BOOTSTRAP_ADMIN_EMAIL=${{ vars.BOOTSTRAP_ADMIN_EMAIL }}"
+
+      - name: Build the web app
+        run: npm run build -w web
         env:
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          # A Firebase web config is public by design: repository variables, not secrets.
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.GCP_PROJECT_ID }}.firebaseapp.com
 
-      # enablement turns Pages on via the API if it is not already, so the very
-      # first push works without having to flip the switch in Settings first.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy hosting and Firestore rules
+        run: npx --yes firebase-tools@15.34.2 deploy --only hosting,firestore:rules --project "$PROJECT_ID" --non-interactive
