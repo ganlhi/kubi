@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Kubi : le pot aux trésors de Kubera, surmonté d'un joyau -->
+  <rect width="64" height="64" rx="14" fill="#065f46"/>
+  <path d="M32 5 38 11 32 17 26 11Z" fill="#a7f3d0"/>
+  <rect x="21" y="19" width="22" height="5" rx="2.5" fill="#fbbf24"/>
+  <path d="M25 24h14l-1 3c12 3 12 25 1 27H25C14 52 14 30 26 27Z" fill="#fbbf24"/>
+  <path d="M19 38q13 5 26 0" fill="none" stroke="#065f46" stroke-width="3" stroke-linecap="round"/>
+</svg>
